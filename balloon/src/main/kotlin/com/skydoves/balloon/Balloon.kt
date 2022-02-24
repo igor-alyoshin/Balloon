@@ -20,19 +20,10 @@ package com.skydoves.balloon
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
+import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Point
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
-import android.graphics.Shader
-import android.graphics.Typeface
+import android.graphics.*
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -42,29 +33,14 @@ import android.os.Handler
 import android.os.Looper
 import android.text.method.MovementMethod
 import android.util.LayoutDirection
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewOutlineProvider
+import android.view.*
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.PopupWindow
 import android.widget.TextView
-import androidx.annotation.AnimRes
-import androidx.annotation.ColorInt
-import androidx.annotation.ColorRes
-import androidx.annotation.DimenRes
-import androidx.annotation.DrawableRes
-import androidx.annotation.FloatRange
-import androidx.annotation.LayoutRes
-import androidx.annotation.MainThread
-import androidx.annotation.Px
-import androidx.annotation.StringRes
-import androidx.annotation.StyleRes
+import androidx.annotation.*
 import androidx.core.view.ViewCompat
 import androidx.core.view.forEach
 import androidx.core.widget.ImageViewCompat
@@ -77,27 +53,7 @@ import com.skydoves.balloon.annotations.Dp
 import com.skydoves.balloon.annotations.Sp
 import com.skydoves.balloon.databinding.BalloonLayoutBodyBinding
 import com.skydoves.balloon.databinding.BalloonLayoutOverlayBinding
-import com.skydoves.balloon.extensions.applyIconForm
-import com.skydoves.balloon.extensions.applyTextForm
-import com.skydoves.balloon.extensions.circularRevealed
-import com.skydoves.balloon.extensions.circularUnRevealed
-import com.skydoves.balloon.extensions.contextColor
-import com.skydoves.balloon.extensions.contextDrawable
-import com.skydoves.balloon.extensions.dimen
-import com.skydoves.balloon.extensions.dimenPixel
-import com.skydoves.balloon.extensions.displaySize
-import com.skydoves.balloon.extensions.dp
-import com.skydoves.balloon.extensions.getIntrinsicHeight
-import com.skydoves.balloon.extensions.getStatusBarHeight
-import com.skydoves.balloon.extensions.getSumOfIntrinsicWidth
-import com.skydoves.balloon.extensions.getViewPointOnScreen
-import com.skydoves.balloon.extensions.isExistHorizontalDrawable
-import com.skydoves.balloon.extensions.isFinishing
-import com.skydoves.balloon.extensions.px2Sp
-import com.skydoves.balloon.extensions.runOnAfterSDK21
-import com.skydoves.balloon.extensions.runOnAfterSDK22
-import com.skydoves.balloon.extensions.sumOfCompoundPadding
-import com.skydoves.balloon.extensions.visible
+import com.skydoves.balloon.extensions.*
 import com.skydoves.balloon.overlay.BalloonOverlayAnimation
 import com.skydoves.balloon.overlay.BalloonOverlayOval
 import com.skydoves.balloon.overlay.BalloonOverlayShape
@@ -157,6 +113,8 @@ public class Balloon private constructor(
     ViewGroup.LayoutParams.MATCH_PARENT,
     ViewGroup.LayoutParams.MATCH_PARENT
   )
+
+  public val keyboardOverlayDialog: AlertDialog = createKeyboardOverlayDialog()
 
   /** Denotes the popup is showing or not. */
   public var isShowing: Boolean = false
@@ -226,6 +184,28 @@ public class Balloon private constructor(
 
   private fun getDoubleArrowSize(): Int {
     return builder.arrowSize * 2
+  }
+
+  private fun createKeyboardOverlayDialog(): AlertDialog {
+    val context =
+      ContextThemeWrapper(context, R.style.Balloon_AlertDialogTransparent)
+    val builder = AlertDialog.Builder(context)
+    builder.setView(View(context))
+    val dialog = builder.create()
+    dialog.setCancelable(true)
+    val lp = WindowManager.LayoutParams().apply {
+      width = WindowManager.LayoutParams.MATCH_PARENT
+      height = WindowManager.LayoutParams.MATCH_PARENT
+      type = WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
+      flags =
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
+    }
+    dialog.setOnDismissListener { dismiss() }
+    dialog.window?.run {
+      attributes = lp
+      setBackgroundDrawableResource(android.R.color.transparent)
+    }
+    return dialog
   }
 
   private fun initializeArrow(anchor: View) {
@@ -751,6 +731,7 @@ public class Balloon private constructor(
         initializeBalloonContent()
 
         applyBalloonOverlayAnimation()
+        showKeyboardOverlay()
         showOverlayWindow(anchor)
         passTouchEventToAnchor(anchor)
 
@@ -783,6 +764,10 @@ public class Balloon private constructor(
       overlayBinding.balloonOverlayView.anchorView = anchor
       overlayWindow.showAtLocation(anchor, Gravity.CENTER, 0, 0)
     }
+  }
+
+  private fun showKeyboardOverlay() {
+    if (builder.showKeyboardOverlay) keyboardOverlayDialog.show()
   }
 
   @MainThread
@@ -1106,6 +1091,7 @@ public class Balloon private constructor(
         this.isShowing = false
         this.bodyWindow.dismiss()
         this.overlayWindow.dismiss()
+        this.keyboardOverlayDialog.dismiss()
         this.handler.removeCallbacks(autoDismissRunnable)
       }
       if (this.builder.balloonAnimation == BalloonAnimation.CIRCULAR) {
@@ -1372,6 +1358,7 @@ public class Balloon private constructor(
     this.destroyed = true
     this.overlayWindow.dismiss()
     this.bodyWindow.dismiss()
+    this.keyboardOverlayDialog.dismiss()
   }
 
   /** Builder class for creating [Balloon]. */
@@ -1631,6 +1618,9 @@ public class Balloon private constructor(
 
     @set:JvmSynthetic
     public var passTouchEventToAnchor: Boolean = false
+
+    @set:JvmSynthetic
+    public var showKeyboardOverlay: Boolean = false
 
     @set:JvmSynthetic
     public var autoDismissDuration: Long = NO_LONG_VALUE
@@ -2468,6 +2458,10 @@ public class Balloon private constructor(
     /** dismisses when the overlay popup is clicked. */
     public fun setDismissWhenOverlayClicked(value: Boolean): Builder = apply {
       this.dismissWhenOverlayClicked = value
+    }
+
+    public fun setShowKeyboardOverlay(value: Boolean): Builder = apply {
+      this.showKeyboardOverlay = value
     }
 
     /** pass touch events through the overlay to the anchor. */
